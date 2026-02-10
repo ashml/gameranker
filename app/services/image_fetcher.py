@@ -10,9 +10,9 @@ class ImageFetcher:
         self.api_key = api_key or os.getenv(RAWG_API_KEY_ENV)
         IMAGES_DIR.mkdir(parents=True, exist_ok=True)
 
-    def fetch_image(self, game_name: str) -> Path:
+    def fetch_image(self, game_name: str) -> Path | None:
         if not self.api_key:
-            return PLACEHOLDER_IMAGE
+            return PLACEHOLDER_IMAGE if PLACEHOLDER_IMAGE.exists() else None
         try:
             response = requests.get(
                 RAWG_API_URL,
@@ -23,10 +23,10 @@ class ImageFetcher:
             data = response.json()
             results = data.get("results") or []
             if not results:
-                return PLACEHOLDER_IMAGE
+                return PLACEHOLDER_IMAGE if PLACEHOLDER_IMAGE.exists() else None
             image_url = results[0].get("background_image")
             if not image_url:
-                return PLACEHOLDER_IMAGE
+                return PLACEHOLDER_IMAGE if PLACEHOLDER_IMAGE.exists() else None
             image_response = requests.get(image_url, timeout=10)
             image_response.raise_for_status()
             file_name = f"{game_name[:80].replace(' ', '_')}.jpg"
@@ -34,4 +34,4 @@ class ImageFetcher:
             image_path.write_bytes(image_response.content)
             return image_path
         except requests.RequestException:
-            return PLACEHOLDER_IMAGE
+            return PLACEHOLDER_IMAGE if PLACEHOLDER_IMAGE.exists() else None

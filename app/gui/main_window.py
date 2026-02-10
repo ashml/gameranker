@@ -38,9 +38,13 @@ class MainWindow(QtWidgets.QMainWindow):
         menu = self.menuBar()
         file_menu = menu.addMenu("Файл")
 
-        import_action = QtGui.QAction("📂 Импорт .docx", self)
-        import_action.triggered.connect(self.import_docx)
-        file_menu.addAction(import_action)
+        import_docx_action = QtGui.QAction("📂 Импорт .docx", self)
+        import_docx_action.triggered.connect(self.import_docx)
+        file_menu.addAction(import_docx_action)
+
+        import_txt_action = QtGui.QAction("📂 Импорт .txt", self)
+        import_txt_action.triggered.connect(self.import_txt)
+        file_menu.addAction(import_txt_action)
 
         export_txt_action = QtGui.QAction("📤 Экспорт .txt", self)
         export_txt_action.triggered.connect(lambda: self.export_results("txt"))
@@ -98,6 +102,15 @@ class MainWindow(QtWidgets.QMainWindow):
 
     def import_docx(self):
         file_path, _ = QtWidgets.QFileDialog.getOpenFileName(self, "Импорт .docx", "", "Docx Files (*.docx)")
+        if not file_path:
+            return
+        added = self.importer.import_file(self.session, Path(file_path))
+        QtWidgets.QMessageBox.information(self, "Импорт", f"Добавлено игр: {added}")
+        self._load_next_pair()
+        self._update_status()
+
+    def import_txt(self):
+        file_path, _ = QtWidgets.QFileDialog.getOpenFileName(self, "Импорт .txt", "", "Text Files (*.txt)")
         if not file_path:
             return
         added = self.importer.import_file(self.session, Path(file_path))

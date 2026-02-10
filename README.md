@@ -3,7 +3,7 @@
 Desktop Python application for ranking video games using pairwise comparisons and TrueSkill.
 
 ## Features
-- Import games from `.docx` (one game per line).
+- Import games from `.docx` or `.txt` (one game per line).
 - Pairwise comparisons: left better, draw, right better.
 - TrueSkill-based ratings mapped to 0–100.
 - SQLite storage (persistent volume in Docker).
@@ -34,10 +34,10 @@ python -m app.main
 
 ## Data
 - Database stored at `data/database.sqlite`.
-- Provide your own `.docx` file with one game per line for imports.
+- Provide your own `.docx` or `.txt` file with one game per line for imports.
 
 ## Usage
-1. Use **Файл → 📂 Импорт .docx** to load games.
+1. Use **Файл → 📂 Импорт .docx** or **📂 Импорт .txt** to load games.
 2. Compare games with buttons or hotkeys:
    - Left arrow: left better
    - Up arrow: draw
