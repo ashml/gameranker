@@ -59,9 +59,9 @@ class MainWindow(QtWidgets.QMainWindow):
         file_menu.addAction(reset_action)
 
     def _setup_shortcuts(self):
-        QtWidgets.QShortcut(QtCore.QKeySequence(QtCore.Qt.Key.Key_Left), self, activated=lambda: self.handle_comparison(-1))
-        QtWidgets.QShortcut(QtCore.QKeySequence(QtCore.Qt.Key.Key_Up), self, activated=lambda: self.handle_comparison(0))
-        QtWidgets.QShortcut(QtCore.QKeySequence(QtCore.Qt.Key.Key_Right), self, activated=lambda: self.handle_comparison(1))
+        QtGui.QShortcut(QtGui.QKeySequence(QtCore.Qt.Key.Key_Left), self, activated=lambda: self.handle_comparison(-1))
+        QtGui.QShortcut(QtGui.QKeySequence(QtCore.Qt.Key.Key_Up), self, activated=lambda: self.handle_comparison(0))
+        QtGui.QShortcut(QtGui.QKeySequence(QtCore.Qt.Key.Key_Right), self, activated=lambda: self.handle_comparison(1))
 
     def _load_next_pair(self):
         pair = self.pair_selector.select_pair(self.session)
