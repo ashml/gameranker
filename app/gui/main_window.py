@@ -5,7 +5,7 @@ from sqlalchemy import select, func
 from app.core.importer import DocxImporter
 from app.core.pair_selector import PairSelector
 from app.core.rating import RatingEngine
-from app.db.models import Comparison, Game
+from app.db.models import Base, Comparison, Game
 from app.db.session import SessionLocal, init_db
 from app.gui.comparison_view import ComparisonView
 from app.services.exporter import Exporter
@@ -175,23 +175,19 @@ class MainWindow(QtWidgets.QMainWindow):
         )
         if confirm != QtWidgets.QMessageBox.StandardButton.Yes:
             return
-        self.session.close()
-        if self._delete_database_file():
-            init_db()
-        self.session = SessionLocal()
-        self._load_next_pair()
-        self._update_status()
-
-    def _delete_database_file(self) -> bool:
-        from app.config import DB_PATH
-
         try:
-            if DB_PATH.exists():
-                DB_PATH.unlink()
-            return True
-        except OSError:
-            QtWidgets.QMessageBox.warning(self, "Ошибка", "Не удалось удалить файл базы данных.")
-            return False
+            self.session.close()
+            SessionLocal.remove()
+            engine = init_db()
+            Base.metadata.drop_all(bind=engine)
+            Base.metadata.create_all(bind=engine)
+            self.session = SessionLocal()
+            self._load_next_pair()
+            self._update_status()
+            QtWidgets.QMessageBox.information(self, "Готово", "База данных очищена.")
+        except Exception as exc:
+            QtWidgets.QMessageBox.warning(self, "Ошибка", f"Не удалось очистить базу данных: {exc}")
+            self.session = SessionLocal()
 
     def _update_status(self):
         total_games = self.session.execute(select(func.count(Game.id))).scalar() or 0
