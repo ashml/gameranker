@@ -38,23 +38,23 @@ class MainWindow(QtWidgets.QMainWindow):
         menu = self.menuBar()
         file_menu = menu.addMenu("Файл")
 
-        import_action = QtWidgets.QAction("📂 Импорт .docx", self)
+        import_action = QtGui.QAction("📂 Импорт .docx", self)
         import_action.triggered.connect(self.import_docx)
         file_menu.addAction(import_action)
 
-        export_txt_action = QtWidgets.QAction("📤 Экспорт .txt", self)
+        export_txt_action = QtGui.QAction("📤 Экспорт .txt", self)
         export_txt_action.triggered.connect(lambda: self.export_results("txt"))
         file_menu.addAction(export_txt_action)
 
-        export_docx_action = QtWidgets.QAction("📤 Экспорт .docx", self)
+        export_docx_action = QtGui.QAction("📤 Экспорт .docx", self)
         export_docx_action.triggered.connect(lambda: self.export_results("docx"))
         file_menu.addAction(export_docx_action)
 
-        list_action = QtWidgets.QAction("📊 Список игр", self)
+        list_action = QtGui.QAction("📊 Список игр", self)
         list_action.triggered.connect(self.show_games_list)
         file_menu.addAction(list_action)
 
-        reset_action = QtWidgets.QAction("🔄 Сброс рейтингов", self)
+        reset_action = QtGui.QAction("🔄 Сброс рейтингов", self)
         reset_action.triggered.connect(self.reset_ratings)
         file_menu.addAction(reset_action)
 
