@@ -62,6 +62,10 @@ class MainWindow(QtWidgets.QMainWindow):
         reset_action.triggered.connect(self.reset_ratings)
         file_menu.addAction(reset_action)
 
+        purge_action = QtGui.QAction("🗑 Полное удаление базы", self)
+        purge_action.triggered.connect(self.purge_database)
+        file_menu.addAction(purge_action)
+
     def _setup_shortcuts(self):
         QtGui.QShortcut(QtGui.QKeySequence(QtCore.Qt.Key.Key_Left), self, activated=lambda: self.handle_comparison(-1))
         QtGui.QShortcut(QtGui.QKeySequence(QtCore.Qt.Key.Key_Up), self, activated=lambda: self.handle_comparison(0))
@@ -162,6 +166,36 @@ class MainWindow(QtWidgets.QMainWindow):
         self.session.commit()
         self._load_next_pair()
         self._update_status()
+
+    def purge_database(self):
+        confirm = QtWidgets.QMessageBox.question(
+            self,
+            "Полное удаление",
+            "Удалить базу данных полностью? Все игры и сравнения будут удалены.",
+        )
+        if confirm != QtWidgets.QMessageBox.StandardButton.Yes:
+            return
+        self.session.close()
+        if self._delete_database_file():
+            from app.db.session import init_db, SessionLocal
+
+            init_db()
+            self.session = SessionLocal()
+        else:
+            self.session = SessionLocal()
+        self._load_next_pair()
+        self._update_status()
+
+    def _delete_database_file(self) -> bool:
+        from app.config import DB_PATH
+
+        try:
+            if DB_PATH.exists():
+                DB_PATH.unlink()
+            return True
+        except OSError:
+            QtWidgets.QMessageBox.warning(self, "Ошибка", "Не удалось удалить файл базы данных.")
+            return False
 
     def _update_status(self):
         total_games = self.session.execute(select(func.count(Game.id))).scalar() or 0
