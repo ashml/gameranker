@@ -6,7 +6,7 @@ from app.core.importer import DocxImporter
 from app.core.pair_selector import PairSelector
 from app.core.rating import RatingEngine
 from app.db.models import Comparison, Game
-from app.db.session import SessionLocal
+from app.db.session import SessionLocal, init_db
 from app.gui.comparison_view import ComparisonView
 from app.services.exporter import Exporter
 
@@ -177,12 +177,8 @@ class MainWindow(QtWidgets.QMainWindow):
             return
         self.session.close()
         if self._delete_database_file():
-            from app.db.session import init_db, SessionLocal
-
             init_db()
-            self.session = SessionLocal()
-        else:
-            self.session = SessionLocal()
+        self.session = SessionLocal()
         self._load_next_pair()
         self._update_status()
 
