@@ -1,0 +1,11 @@
+version: "3.8"
+services:
+  gameranker:
+    build: .
+    environment:
+      - DISPLAY=${DISPLAY}
+      - RAWG_API_KEY=${RAWG_API_KEY}
+    volumes:
+      - ./data:/app/data
+      - /tmp/.X11-unix:/tmp/.X11-unix
+    network_mode: "host"
