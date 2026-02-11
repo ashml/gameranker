@@ -1,5 +1,5 @@
 from dataclasses import dataclass
-from trueskill import Rating, rate_1vs1, TrueSkill
+from trueskill import Rating, TrueSkill
 
 
 @dataclass
@@ -30,5 +30,9 @@ class RatingEngine:
         return self.env.rate_1vs1(left_rating, right_rating, drawn=True)
 
     def to_display_score(self, rating: Rating) -> float:
-        score = (rating.mu - 3 * rating.sigma) * (100 / 50)
+        score = (rating.mu / (self.config.mu * 2)) * 100
         return max(0.0, min(100.0, score))
+
+    def mu_from_score(self, score_0_100: float) -> float:
+        normalized = max(0.0, min(100.0, score_0_100))
+        return (normalized / 100.0) * (self.config.mu * 2)

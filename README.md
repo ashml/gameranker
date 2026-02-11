@@ -36,6 +36,16 @@ python -m app.main
 - Database stored at `data/database.sqlite`.
 - Provide your own `.docx` or `.txt` file with one game per line for imports.
 
+Input format supports optional initial score per line:
+
+```
+Game Name [98]
+Game Name 2
+Game Name 3 [87]
+```
+
+If score is missing, game starts from 50 with maximum uncertainty.
+
 ## Usage
 1. Use **Файл → 📂 Импорт .docx** or **📂 Импорт .txt** to load games.
 2. Compare games with buttons or hotkeys:

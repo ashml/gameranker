@@ -74,7 +74,7 @@ class MainWindow(QtWidgets.QMainWindow):
     def _load_next_pair(self):
         pair = self.pair_selector.select_pair(self.session)
         if not pair:
-            self.view.left_label.setText("Добавьте игры через импорт .docx")
+            self.view.left_label.setText("Добавьте игры через импорт .docx или .txt")
             self.view.right_label.setText("")
             self.view.left_rating.setText("")
             self.view.right_rating.setText("")
@@ -143,10 +143,19 @@ class MainWindow(QtWidgets.QMainWindow):
         layout = QtWidgets.QVBoxLayout(dialog)
         table = QtWidgets.QTableWidget(len(games), 3)
         table.setHorizontalHeaderLabels(["Название", "Рейтинг", "Неопределённость"])
-        for row, game in enumerate(sorted(games, key=lambda g: g.name.lower())):
-            table.setItem(row, 0, QtWidgets.QTableWidgetItem(game.name))
-            table.setItem(row, 1, QtWidgets.QTableWidgetItem(f"{game.rating:.2f}"))
-            table.setItem(row, 2, QtWidgets.QTableWidgetItem(f"{game.uncertainty:.2f}"))
+        table.setSortingEnabled(False)
+        table.setEditTriggers(QtWidgets.QAbstractItemView.EditTrigger.NoEditTriggers)
+        for row, game in enumerate(games):
+            name_item = QtWidgets.QTableWidgetItem(game.name)
+            rating_item = QtWidgets.QTableWidgetItem(f"{game.rating:.2f}")
+            uncertainty_item = QtWidgets.QTableWidgetItem(f"{game.uncertainty:.2f}")
+            rating_item.setData(QtCore.Qt.ItemDataRole.EditRole, float(game.rating))
+            uncertainty_item.setData(QtCore.Qt.ItemDataRole.EditRole, float(game.uncertainty))
+            table.setItem(row, 0, name_item)
+            table.setItem(row, 1, rating_item)
+            table.setItem(row, 2, uncertainty_item)
+        table.setSortingEnabled(True)
+        table.sortItems(0, QtCore.Qt.SortOrder.AscendingOrder)
         table.resizeColumnsToContents()
         layout.addWidget(table)
         close_button = QtWidgets.QPushButton("Закрыть")
