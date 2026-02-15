@@ -1,0 +1,248 @@
+from pathlib import Path
+
+from PySide6 import QtCore, QtGui, QtWidgets
+from sqlalchemy import func, select
+
+from app.core.importer import DocxImporter
+from app.core.pair_selector import PairSelector
+from app.core.rating import RatingEngine
+from app.db.models import Base, Comparison, Game
+from app.db.session import SessionLocal, init_db
+from app.gui.comparison_view import ComparisonView
+from app.services.exporter import Exporter
+
+
+class MainWindow(QtWidgets.QMainWindow):
+    def __init__(self):
+        super().__init__()
+        self.setWindowTitle("Game Ranker")
+        self.session = SessionLocal()
+        self.rating_engine = RatingEngine()
+        self.pair_selector = PairSelector()
+        self.importer = DocxImporter()
+        self.exporter = Exporter(self.rating_engine)
+
+        self.view = ComparisonView()
+        self.setCentralWidget(self.view)
+        self.view.compare_signal.connect(self.handle_comparison)
+        self.view.exclude_signal.connect(self.exclude_current_game)
+
+        self._create_menu()
+        self._setup_shortcuts()
+        self._load_next_pair()
+        self._update_status()
+
+    def closeEvent(self, event):
+        self.session.close()
+        super().closeEvent(event)
+
+    def _create_menu(self):
+        menu = self.menuBar()
+        file_menu = menu.addMenu("Файл")
+
+        import_docx_action = QtGui.QAction("📂 Импорт .docx", self)
+        import_docx_action.triggered.connect(self.import_docx)
+        file_menu.addAction(import_docx_action)
+
+        import_txt_action = QtGui.QAction("📂 Импорт .txt", self)
+        import_txt_action.triggered.connect(self.import_txt)
+        file_menu.addAction(import_txt_action)
+
+        export_txt_action = QtGui.QAction("📤 Экспорт .txt", self)
+        export_txt_action.triggered.connect(lambda: self.export_results("txt"))
+        file_menu.addAction(export_txt_action)
+
+        export_docx_action = QtGui.QAction("📤 Экспорт .docx", self)
+        export_docx_action.triggered.connect(lambda: self.export_results("docx"))
+        file_menu.addAction(export_docx_action)
+
+        list_action = QtGui.QAction("📊 Список игр", self)
+        list_action.triggered.connect(self.show_games_list)
+        file_menu.addAction(list_action)
+
+        reset_action = QtGui.QAction("🔄 Сброс рейтингов", self)
+        reset_action.triggered.connect(self.reset_ratings)
+        file_menu.addAction(reset_action)
+
+        purge_action = QtGui.QAction("🗑 Полное удаление базы", self)
+        purge_action.triggered.connect(self.purge_database)
+        file_menu.addAction(purge_action)
+
+    def _setup_shortcuts(self):
+        QtGui.QShortcut(QtGui.QKeySequence(QtCore.Qt.Key.Key_Left), self, activated=lambda: self.handle_comparison(-1))
+        QtGui.QShortcut(QtGui.QKeySequence(QtCore.Qt.Key.Key_Up), self, activated=lambda: self.handle_comparison(0))
+        QtGui.QShortcut(QtGui.QKeySequence(QtCore.Qt.Key.Key_Right), self, activated=lambda: self.handle_comparison(1))
+
+    def _load_next_pair(self):
+        pair = self.pair_selector.select_pair(self.session)
+        if not pair:
+            self.left_game = None
+            self.right_game = None
+            self.view.clear_pair("Добавьте игры через импорт .docx или .txt")
+            return
+        self.left_game, self.right_game = pair
+        left_rating = self.rating_engine.env.Rating(self.left_game.rating, self.left_game.uncertainty)
+        right_rating = self.rating_engine.env.Rating(self.right_game.rating, self.right_game.uncertainty)
+        left_score = self.rating_engine.to_display_score(left_rating)
+        right_score = self.rating_engine.to_display_score(right_rating)
+        self.view.set_game_data(self.left_game, self.right_game, left_score, right_score)
+
+    def handle_comparison(self, result: int):
+        if not self.left_game or not self.right_game:
+            return
+        left_rating = self.rating_engine.env.Rating(self.left_game.rating, self.left_game.uncertainty)
+        right_rating = self.rating_engine.env.Rating(self.right_game.rating, self.right_game.uncertainty)
+        new_left, new_right = self.rating_engine.update(left_rating, right_rating, result)
+        self.left_game.rating = new_left.mu
+        self.left_game.uncertainty = new_left.sigma
+        self.right_game.rating = new_right.mu
+        self.right_game.uncertainty = new_right.sigma
+        comparison = Comparison(game_left_id=self.left_game.id, game_right_id=self.right_game.id, result=result)
+        self.session.add(comparison)
+        self.session.commit()
+        self._load_next_pair()
+        self._update_status()
+
+    def exclude_current_game(self, side: str):
+        game = self.left_game if side == "left" else self.right_game
+        if not game:
+            return
+        game.is_ranked = False
+        game.rating = 0.0
+        self.session.commit()
+        self._load_next_pair()
+        self._update_status()
+
+    def import_docx(self):
+        file_path, _ = QtWidgets.QFileDialog.getOpenFileName(self, "Импорт .docx", "", "Docx Files (*.docx)")
+        if not file_path:
+            return
+        added = self.importer.import_file(self.session, Path(file_path))
+        QtWidgets.QMessageBox.information(self, "Импорт", f"Добавлено игр: {added}")
+        self._load_next_pair()
+        self._update_status()
+
+    def import_txt(self):
+        file_path, _ = QtWidgets.QFileDialog.getOpenFileName(self, "Импорт .txt", "", "Text Files (*.txt)")
+        if not file_path:
+            return
+        added = self.importer.import_file(self.session, Path(file_path))
+        QtWidgets.QMessageBox.information(self, "Импорт", f"Добавлено игр: {added}")
+        self._load_next_pair()
+        self._update_status()
+
+    def export_results(self, fmt: str):
+        filters = "Text Files (*.txt)" if fmt == "txt" else "Docx Files (*.docx)"
+        file_path, _ = QtWidgets.QFileDialog.getSaveFileName(self, "Экспорт", "", filters)
+        if not file_path:
+            return
+        sort_by, ok = QtWidgets.QInputDialog.getItem(self, "Сортировка", "Сортировать по:", ["rating", "alpha"], 0, False)
+        if not ok:
+            return
+        if fmt == "txt":
+            self.exporter.export_txt(self.session, Path(file_path), sort_by=sort_by)
+        else:
+            self.exporter.export_docx(self.session, Path(file_path), sort_by=sort_by)
+        QtWidgets.QMessageBox.information(self, "Экспорт", "Экспорт завершён")
+
+    def show_games_list(self):
+        games = self.session.execute(select(Game)).scalars().all()
+        dialog = QtWidgets.QDialog(self)
+        dialog.setWindowTitle("Список игр")
+        layout = QtWidgets.QVBoxLayout(dialog)
+        table = QtWidgets.QTableWidget(len(games), 4)
+        table.setHorizontalHeaderLabels(["Название", "Рейтинг", "Неопределённость", "Статус"])
+        table.setSortingEnabled(False)
+        table.setEditTriggers(QtWidgets.QAbstractItemView.EditTrigger.NoEditTriggers)
+
+        for row, game in enumerate(games):
+            name_item = QtWidgets.QTableWidgetItem(game.name)
+            if game.is_ranked:
+                score = self.rating_engine.to_display_score(self.rating_engine.env.Rating(game.rating, game.uncertainty))
+                uncertainty = game.uncertainty
+            else:
+                score = 0.0
+                uncertainty = 0.0
+
+            rating_item = QtWidgets.QTableWidgetItem(f"{score:.2f}")
+            uncertainty_item = QtWidgets.QTableWidgetItem(f"{uncertainty:.2f}")
+            rating_item.setData(QtCore.Qt.ItemDataRole.EditRole, float(score))
+            uncertainty_item.setData(QtCore.Qt.ItemDataRole.EditRole, float(uncertainty))
+            table.setItem(row, 0, name_item)
+            table.setItem(row, 1, rating_item)
+            table.setItem(row, 2, uncertainty_item)
+
+            if game.is_ranked:
+                status_item = QtWidgets.QTableWidgetItem("В рейтинге")
+                status_item.setData(QtCore.Qt.ItemDataRole.EditRole, 1)
+                table.setItem(row, 3, status_item)
+            else:
+                restore_button = QtWidgets.QPushButton("Вернуть в рейтинг")
+                restore_button.clicked.connect(lambda _=False, game_id=game.id, dlg=dialog: self.restore_game_to_rating(game_id, dlg))
+                table.setCellWidget(row, 3, restore_button)
+
+        table.setSortingEnabled(True)
+        table.sortItems(0, QtCore.Qt.SortOrder.AscendingOrder)
+        table.resizeColumnsToContents()
+        layout.addWidget(table)
+        close_button = QtWidgets.QPushButton("Закрыть")
+        close_button.clicked.connect(dialog.accept)
+        layout.addWidget(close_button)
+        dialog.exec()
+
+    def restore_game_to_rating(self, game_id: int, dialog: QtWidgets.QDialog):
+        game = self.session.get(Game, game_id)
+        if not game:
+            return
+        game.is_ranked = True
+        game.rating = self.rating_engine.config.mu
+        game.uncertainty = self.rating_engine.config.sigma
+        self.session.commit()
+        self._load_next_pair()
+        self._update_status()
+        dialog.accept()
+        self.show_games_list()
+
+    def reset_ratings(self):
+        confirm = QtWidgets.QMessageBox.question(self, "Сброс", "Сбросить все рейтинги?")
+        if confirm != QtWidgets.QMessageBox.StandardButton.Yes:
+            return
+        games = self.session.execute(select(Game)).scalars().all()
+        for game in games:
+            game.rating = self.rating_engine.config.mu
+            game.uncertainty = self.rating_engine.config.sigma
+            game.is_ranked = True
+        self.session.execute(Comparison.__table__.delete())
+        self.session.commit()
+        self._load_next_pair()
+        self._update_status()
+
+    def purge_database(self):
+        confirm = QtWidgets.QMessageBox.question(
+            self,
+            "Полное удаление",
+            "Удалить базу данных полностью? Все игры и сравнения будут удалены.",
+        )
+        if confirm != QtWidgets.QMessageBox.StandardButton.Yes:
+            return
+        try:
+            self.session.close()
+            SessionLocal.remove()
+            engine = init_db()
+            Base.metadata.drop_all(bind=engine)
+            Base.metadata.create_all(bind=engine)
+            self.session = SessionLocal()
+            self._load_next_pair()
+            self._update_status()
+            QtWidgets.QMessageBox.information(self, "Готово", "База данных очищена.")
+        except Exception as exc:
+            QtWidgets.QMessageBox.warning(self, "Ошибка", f"Не удалось очистить базу данных: {exc}")
+            self.session = SessionLocal()
+
+    def _update_status(self):
+        total_games = self.session.execute(select(func.count(Game.id))).scalar() or 0
+        total_comparisons = self.session.execute(select(func.count(Comparison.id))).scalar() or 0
+        ranked_games = self.session.execute(select(func.count(Game.id)).where(Game.is_ranked.is_(True))).scalar() or 0
+        self.statusBar().showMessage(
+            f"Игр: {total_games} | В рейтинге: {ranked_games} | Сравнений: {total_comparisons}"
+        )

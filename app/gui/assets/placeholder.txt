@@ -1,0 +1,1 @@
+Placeholder for missing game images. Provide your own JPEG at app/gui/assets/placeholder.jpg.
