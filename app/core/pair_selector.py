@@ -42,7 +42,7 @@ class PairSelector:
         return counts
 
     def select_pair(self, session: Session) -> tuple[Game, Game] | None:
-        games = session.execute(select(Game)).scalars().all()
+        games = session.execute(select(Game).where(Game.is_ranked.is_(True))).scalars().all()
         if len(games) < 2:
             return None
 

@@ -1,5 +1,5 @@
 from datetime import datetime
-from sqlalchemy import Column, DateTime, Float, ForeignKey, Integer, String
+from sqlalchemy import Boolean, Column, DateTime, Float, ForeignKey, Integer, String
 from sqlalchemy.orm import declarative_base, relationship
 
 Base = declarative_base()
@@ -12,6 +12,7 @@ class Game(Base):
     name = Column(String, unique=True, nullable=False)
     rating = Column(Float, nullable=False, default=25.0)
     uncertainty = Column(Float, nullable=False, default=8.333)
+    is_ranked = Column(Boolean, nullable=False, default=True)
     image_path = Column(String, nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow)
 

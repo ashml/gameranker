@@ -1,6 +1,7 @@
 from pathlib import Path
+
 from PySide6 import QtCore, QtGui, QtWidgets
-from sqlalchemy import select, func
+from sqlalchemy import func, select
 
 from app.core.importer import DocxImporter
 from app.core.pair_selector import PairSelector
@@ -24,6 +25,7 @@ class MainWindow(QtWidgets.QMainWindow):
         self.view = ComparisonView()
         self.setCentralWidget(self.view)
         self.view.compare_signal.connect(self.handle_comparison)
+        self.view.exclude_signal.connect(self.exclude_current_game)
 
         self._create_menu()
         self._setup_shortcuts()
@@ -74,12 +76,9 @@ class MainWindow(QtWidgets.QMainWindow):
     def _load_next_pair(self):
         pair = self.pair_selector.select_pair(self.session)
         if not pair:
-            self.view.left_label.setText("Добавьте игры через импорт .docx или .txt")
-            self.view.right_label.setText("")
-            self.view.left_rating.setText("")
-            self.view.right_rating.setText("")
-            self.view.left_image.setPixmap(QtGui.QPixmap())
-            self.view.right_image.setPixmap(QtGui.QPixmap())
+            self.left_game = None
+            self.right_game = None
+            self.view.clear_pair("Добавьте игры через импорт .docx или .txt")
             return
         self.left_game, self.right_game = pair
         left_rating = self.rating_engine.env.Rating(self.left_game.rating, self.left_game.uncertainty)
@@ -89,7 +88,7 @@ class MainWindow(QtWidgets.QMainWindow):
         self.view.set_game_data(self.left_game, self.right_game, left_score, right_score)
 
     def handle_comparison(self, result: int):
-        if not hasattr(self, "left_game"):
+        if not self.left_game or not self.right_game:
             return
         left_rating = self.rating_engine.env.Rating(self.left_game.rating, self.left_game.uncertainty)
         right_rating = self.rating_engine.env.Rating(self.right_game.rating, self.right_game.uncertainty)
@@ -100,6 +99,16 @@ class MainWindow(QtWidgets.QMainWindow):
         self.right_game.uncertainty = new_right.sigma
         comparison = Comparison(game_left_id=self.left_game.id, game_right_id=self.right_game.id, result=result)
         self.session.add(comparison)
+        self.session.commit()
+        self._load_next_pair()
+        self._update_status()
+
+    def exclude_current_game(self, side: str):
+        game = self.left_game if side == "left" else self.right_game
+        if not game:
+            return
+        game.is_ranked = False
+        game.rating = 0.0
         self.session.commit()
         self._load_next_pair()
         self._update_status()
@@ -141,19 +150,37 @@ class MainWindow(QtWidgets.QMainWindow):
         dialog = QtWidgets.QDialog(self)
         dialog.setWindowTitle("Список игр")
         layout = QtWidgets.QVBoxLayout(dialog)
-        table = QtWidgets.QTableWidget(len(games), 3)
-        table.setHorizontalHeaderLabels(["Название", "Рейтинг", "Неопределённость"])
+        table = QtWidgets.QTableWidget(len(games), 4)
+        table.setHorizontalHeaderLabels(["Название", "Рейтинг", "Неопределённость", "Статус"])
         table.setSortingEnabled(False)
         table.setEditTriggers(QtWidgets.QAbstractItemView.EditTrigger.NoEditTriggers)
+
         for row, game in enumerate(games):
             name_item = QtWidgets.QTableWidgetItem(game.name)
-            rating_item = QtWidgets.QTableWidgetItem(f"{game.rating:.2f}")
-            uncertainty_item = QtWidgets.QTableWidgetItem(f"{game.uncertainty:.2f}")
-            rating_item.setData(QtCore.Qt.ItemDataRole.EditRole, float(game.rating))
-            uncertainty_item.setData(QtCore.Qt.ItemDataRole.EditRole, float(game.uncertainty))
+            if game.is_ranked:
+                score = self.rating_engine.to_display_score(self.rating_engine.env.Rating(game.rating, game.uncertainty))
+                uncertainty = game.uncertainty
+            else:
+                score = 0.0
+                uncertainty = 0.0
+
+            rating_item = QtWidgets.QTableWidgetItem(f"{score:.2f}")
+            uncertainty_item = QtWidgets.QTableWidgetItem(f"{uncertainty:.2f}")
+            rating_item.setData(QtCore.Qt.ItemDataRole.EditRole, float(score))
+            uncertainty_item.setData(QtCore.Qt.ItemDataRole.EditRole, float(uncertainty))
             table.setItem(row, 0, name_item)
             table.setItem(row, 1, rating_item)
             table.setItem(row, 2, uncertainty_item)
+
+            if game.is_ranked:
+                status_item = QtWidgets.QTableWidgetItem("В рейтинге")
+                status_item.setData(QtCore.Qt.ItemDataRole.EditRole, 1)
+                table.setItem(row, 3, status_item)
+            else:
+                restore_button = QtWidgets.QPushButton("Вернуть в рейтинг")
+                restore_button.clicked.connect(lambda _=False, game_id=game.id, dlg=dialog: self.restore_game_to_rating(game_id, dlg))
+                table.setCellWidget(row, 3, restore_button)
+
         table.setSortingEnabled(True)
         table.sortItems(0, QtCore.Qt.SortOrder.AscendingOrder)
         table.resizeColumnsToContents()
@@ -163,6 +190,19 @@ class MainWindow(QtWidgets.QMainWindow):
         layout.addWidget(close_button)
         dialog.exec()
 
+    def restore_game_to_rating(self, game_id: int, dialog: QtWidgets.QDialog):
+        game = self.session.get(Game, game_id)
+        if not game:
+            return
+        game.is_ranked = True
+        game.rating = self.rating_engine.config.mu
+        game.uncertainty = self.rating_engine.config.sigma
+        self.session.commit()
+        self._load_next_pair()
+        self._update_status()
+        dialog.accept()
+        self.show_games_list()
+
     def reset_ratings(self):
         confirm = QtWidgets.QMessageBox.question(self, "Сброс", "Сбросить все рейтинги?")
         if confirm != QtWidgets.QMessageBox.StandardButton.Yes:
@@ -171,6 +211,7 @@ class MainWindow(QtWidgets.QMainWindow):
         for game in games:
             game.rating = self.rating_engine.config.mu
             game.uncertainty = self.rating_engine.config.sigma
+            game.is_ranked = True
         self.session.execute(Comparison.__table__.delete())
         self.session.commit()
         self._load_next_pair()
@@ -201,4 +242,7 @@ class MainWindow(QtWidgets.QMainWindow):
     def _update_status(self):
         total_games = self.session.execute(select(func.count(Game.id))).scalar() or 0
         total_comparisons = self.session.execute(select(func.count(Comparison.id))).scalar() or 0
-        self.statusBar().showMessage(f"Игр: {total_games} | Сравнений: {total_comparisons}")
+        ranked_games = self.session.execute(select(func.count(Game.id)).where(Game.is_ranked.is_(True))).scalar() or 0
+        self.statusBar().showMessage(
+            f"Игр: {total_games} | В рейтинге: {ranked_games} | Сравнений: {total_comparisons}"
+        )
