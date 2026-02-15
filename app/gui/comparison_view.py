@@ -3,6 +3,7 @@ from PySide6 import QtCore, QtGui, QtWidgets
 
 class ComparisonView(QtWidgets.QWidget):
     compare_signal = QtCore.Signal(int)
+    exclude_signal = QtCore.Signal(str)
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -21,6 +22,9 @@ class ComparisonView(QtWidgets.QWidget):
         self.right_image.setFixedSize(300, 400)
         self.right_image.setScaledContents(True)
 
+        self.left_exclude_button = QtWidgets.QPushButton("Вне рейтинга")
+        self.right_exclude_button = QtWidgets.QPushButton("Вне рейтинга")
+
         self.left_button = QtWidgets.QPushButton("⬅ Левая лучше")
         self.draw_button = QtWidgets.QPushButton("⚖ Равны")
         self.right_button = QtWidgets.QPushButton("Правая лучше ➡")
@@ -28,6 +32,8 @@ class ComparisonView(QtWidgets.QWidget):
         self.left_button.clicked.connect(lambda: self.compare_signal.emit(-1))
         self.draw_button.clicked.connect(lambda: self.compare_signal.emit(0))
         self.right_button.clicked.connect(lambda: self.compare_signal.emit(1))
+        self.left_exclude_button.clicked.connect(lambda: self.exclude_signal.emit("left"))
+        self.right_exclude_button.clicked.connect(lambda: self.exclude_signal.emit("right"))
 
         layout = QtWidgets.QGridLayout(self)
         layout.addWidget(self.left_label, 0, 0)
@@ -36,12 +42,14 @@ class ComparisonView(QtWidgets.QWidget):
         layout.addWidget(self.right_rating, 1, 2)
         layout.addWidget(self.left_image, 2, 0)
         layout.addWidget(self.right_image, 2, 2)
+        layout.addWidget(self.left_exclude_button, 3, 0)
+        layout.addWidget(self.right_exclude_button, 3, 2)
 
         button_layout = QtWidgets.QHBoxLayout()
         button_layout.addWidget(self.left_button)
         button_layout.addWidget(self.draw_button)
         button_layout.addWidget(self.right_button)
-        layout.addLayout(button_layout, 3, 0, 1, 3)
+        layout.addLayout(button_layout, 4, 0, 1, 3)
 
         layout.setColumnStretch(1, 1)
 
@@ -50,8 +58,20 @@ class ComparisonView(QtWidgets.QWidget):
         self.right_label.setText(right_game.name)
         self.left_rating.setText(f"Рейтинг: {left_score:.1f}")
         self.right_rating.setText(f"Рейтинг: {right_score:.1f}")
+        self.left_exclude_button.setEnabled(True)
+        self.right_exclude_button.setEnabled(True)
         self._set_image(self.left_image, left_game.image_path)
         self._set_image(self.right_image, right_game.image_path)
+
+    def clear_pair(self, message: str):
+        self.left_label.setText(message)
+        self.right_label.setText("")
+        self.left_rating.setText("")
+        self.right_rating.setText("")
+        self.left_image.setPixmap(QtGui.QPixmap())
+        self.right_image.setPixmap(QtGui.QPixmap())
+        self.left_exclude_button.setEnabled(False)
+        self.right_exclude_button.setEnabled(False)
 
     def _set_image(self, label: QtWidgets.QLabel, path: str | None):
         if not path:
